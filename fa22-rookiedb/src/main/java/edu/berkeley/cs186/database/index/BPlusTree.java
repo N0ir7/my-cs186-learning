@@ -204,7 +204,6 @@ public class BPlusTree {
 
         // TODO(proj2): Return a BPlusTreeIterator.
         return root == null ? Collections.emptyIterator() : new BPlusTreeIterator();
-//        return Collections.emptyIterator();
     }
 
     /**
@@ -297,7 +296,17 @@ public class BPlusTree {
         // Note: You should NOT update the root variable directly.
         // Use the provided updateRoot() helper method to change
         // the tree's root if the old root splits.
-
+        while(data.hasNext()) {
+            Optional<Pair<DataBox, Long>> put = root.bulkLoad(data, fillFactor);
+            // 需要分裂
+            if (put.isPresent()) {
+                DataBox head = put.get().getFirst();
+                Long headPageNum = put.get().getSecond();
+                List<Long> newChildren = Arrays.asList(metadata.getRootPageNum(), headPageNum);
+                InnerNode newRootNode = new InnerNode(metadata, bufferManager, Arrays.asList(head), newChildren, lockContext);
+                updateRoot(newRootNode);
+            }
+        }
         return;
     }
 
@@ -433,10 +442,10 @@ public class BPlusTree {
     private class BPlusTreeIterator implements Iterator<RecordId> {
 
         // TODO(proj2): Add whatever fields and constructors you want here.
-        Iterator<RecordId> curIterator;
-        LeafNode curLeafNode;
-        ScanMethod scanMethod;
-        DataBox key;
+        Iterator<RecordId> curIterator; // 当前正在遍历的叶子结点的迭代器
+        LeafNode curLeafNode; // 当前正在遍历的叶子结点
+        ScanMethod scanMethod; // Scan的模式（all, GreaterThan）
+        DataBox key; // 若为GreaterThan模式，则有一个需要比较的值
         public BPlusTreeIterator() {
             curLeafNode = root.getLeftmostLeaf();
             this.scanMethod = ScanMethod.ALL;
@@ -458,28 +467,25 @@ public class BPlusTree {
         @Override
         public RecordId next() {
             // TODO(proj2): implement
+
             // 如果没有下一个元素，则抛出异常
             if(!hasNext()){
                 throw new NoSuchElementException();
             }
-            // 如果当前节点有元素
-            if(curIterator.hasNext()){
-//                RecordId num = curIterator.next();
-//                System.out.println(num.toString());
-//                return num;
-                return curIterator.next();
-            }
 
-            // 如果当前节点没有元素, 则迭代至右边一个节点
-            do {
+            //说明有下一个元素（可能在当前结点，可能在这右边的结点），找到下一个元素
+            while (!curIterator.hasNext()){
                 curLeafNode = curLeafNode.getRightSibling().get();
                 curIterator = scanMethod.equals(ScanMethod.ALL)?curLeafNode.scanAll():curLeafNode.scanGreaterEqual(key);
             }
-            while (!curIterator.hasNext());
-
-            return next();
-
+            return curIterator.next();
         }
+
+        /**
+         * 测试一个叶子结点是否有下一个符合要求的元素
+         * @param leafNode 被测试的叶子结点
+         * @return 是否有符合要求的元素
+         */
         private boolean testHasNext(Optional<LeafNode> leafNode){
             // 如果不存在, 则返回false
             if(!leafNode.isPresent()){

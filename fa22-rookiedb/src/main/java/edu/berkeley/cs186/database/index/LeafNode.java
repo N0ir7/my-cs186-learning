@@ -163,15 +163,34 @@ class LeafNode extends BPlusNode {
     @Override
     public Optional<Pair<DataBox, Long>> put(DataBox key, RecordId rid) {
         // TODO(proj2): implement
+
+        Optional<Pair<DataBox, Long>> put = myPut(key, rid,1,0.5f);
+        // 同步
+        sync();
+        return put;
+    }
+
+    /**
+     * 自实现的put的过程
+     * @param key 插入的数据的关键字
+     * @param rid 插入的数据
+     * @param fillFactor 叶子结点的填充系数
+     * @param retainFactor 叶子结点分裂过程中，原结点保留元素数量的系数
+     * @return
+     */
+    private Optional<Pair<DataBox, Long>> myPut(DataBox key, RecordId rid,float fillFactor,float retainFactor) {
         int idx;
         // 每一页最多包含的元素
-        int thresh = metadata.getOrder() * 2;
+        int thresh = (int) Math.ceil(this.metadata.getOrder() * 2 * fillFactor);
         Optional<Pair<DataBox, Long>> put = Optional.empty();
         // 比较并插入到相应位置
         for (idx = 0; idx < keys.size(); idx++) {
             DataBox cur = keys.get(idx);
             int cmp = key.compareTo(cur);
-            if(cmp<0){
+            if(cmp == 0){
+                throw new BPlusTreeException("duplicate key error!");
+            }
+            else if(cmp<0){
                 keys.add(idx,key);
                 rids.add(idx,rid);
                 break;
@@ -182,14 +201,14 @@ class LeafNode extends BPlusNode {
             keys.add(key);
             rids.add(rid);
         }
-        if(keys.size()<=thresh){
-            return put;
+        if(keys.size() <= thresh){
+            return Optional.empty();
         }
         // 元素数量超过上限，需要分裂
 
         // 新leaf node所包含的元素
-        List<DataBox> subKeysList = keys.subList(thresh / 2, keys.size());
-        List<RecordId> subRIDList = rids.subList(thresh / 2, rids.size());
+        List<DataBox> subKeysList = keys.subList((int) (thresh * retainFactor), keys.size());
+        List<RecordId> subRIDList = rids.subList((int) (thresh * retainFactor), rids.size());
 
         // 生成一份拷贝
         List<DataBox> newKeysList = new ArrayList<>(subKeysList);
@@ -208,19 +227,29 @@ class LeafNode extends BPlusNode {
 
         // 生成需要传给parent的元素
         put = Optional.of(new Pair<>(newKeysList.get(0),newPageNum));
-
-        // 同步
-        sync();
-
         return put;
     }
-
     // See BPlusNode.bulkLoad.
     @Override
     public Optional<Pair<DataBox, Long>> bulkLoad(Iterator<Pair<DataBox, RecordId>> data,
             float fillFactor) {
         // TODO(proj2): implement
+        while (data.hasNext()) {
+            Pair<DataBox, RecordId> next = data.next();
+            DataBox key = next.getFirst();
+            RecordId rid = next.getSecond();
 
+            // 直接put
+            Optional<Pair<DataBox, Long>> put = myPut(key, rid, fillFactor, 1);
+            if(put.isPresent()){
+                // 说明该叶子结点已满，需要分裂
+                sync();
+                return put;
+            }
+
+        }
+        // 同步
+        sync();
         return Optional.empty();
     }
 

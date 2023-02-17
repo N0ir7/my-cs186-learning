@@ -106,6 +106,16 @@ class InnerNode extends BPlusNode {
     public Optional<Pair<DataBox, Long>> put(DataBox key, RecordId rid) {
         // TODO(proj2): implement
 
+        Optional<Pair<DataBox, Long>> put = myPut(key, rid);
+        // 同步
+        sync();
+
+        return put;
+    }
+    /*
+        个人实现的put过程
+     */
+    private Optional<Pair<DataBox, Long>> myPut(DataBox key, RecordId rid) {
         // 每个page最多的 entry 数量
         int thresh = metadata.getOrder() * 2;
 
@@ -132,8 +142,8 @@ class InnerNode extends BPlusNode {
         }
 
         /*
-         说明child 满了并分裂了，需要加入当前结点
-         */
+            说明child 满了并分裂了，需要加入当前结点
+        */
         DataBox newKey = put.get().getFirst();
         Long pageNum = put.get().getSecond();
         keys.add(idx,newKey);
@@ -144,8 +154,8 @@ class InnerNode extends BPlusNode {
         }
 
         /*
-         说明当前结点满了，需要分裂
-         */
+            说明当前结点满了，需要分裂
+        */
 
         // 原inner node中的列表 - 修改后inner node的列表
         List<DataBox> subKeysList = keys.subList(thresh / 2, keys.size());
@@ -171,18 +181,61 @@ class InnerNode extends BPlusNode {
         subKeysList.clear();
         subChildrenList.clear();
 
-        // 同步
-        sync();
-
         return put;
     }
-
     // See BPlusNode.bulkLoad.
     @Override
     public Optional<Pair<DataBox, Long>> bulkLoad(Iterator<Pair<DataBox, RecordId>> data,
             float fillFactor) {
         // TODO(proj2): implement
+        int thresh = this.metadata.getOrder() * 2;
+        while(data.hasNext() && keys.size() <= thresh){
+            BPlusNode rightmostChild = this.getChild(children.size() - 1);
+            Optional<Pair<DataBox, Long>> put = rightmostChild.bulkLoad(data, fillFactor);
+            if(!put.isPresent()){
+                // 说明没数据了，直接break
+                break;
+            }
+            /*
+                说明child 满了并分裂了，需要将新的孩子结点加入当前结点
+            */
+            DataBox newKey = put.get().getFirst();
+            Long pageNum = put.get().getSecond();
+            keys.add(newKey);
+            children.add(pageNum);
+        }
+        if(keys.size()>thresh){
+            /*
+                说明当前结点满了，需要分裂
+            */
 
+            // 原inner node中的列表 - 修改后inner node的列表
+            List<DataBox> subKeysList = keys.subList(thresh / 2, keys.size());
+            List<Long> subChildrenList = children.subList(thresh / 2 + 1, children.size());
+
+            // 拷贝一份
+            List<DataBox> newKeysList = new ArrayList<>(subKeysList);
+            List<Long> newChildrenList = new ArrayList<>(subChildrenList);
+
+            // 获取第d+1个key，向 parent 传递
+            DataBox head = newKeysList.remove(0);
+
+            // 生成一个新的inner node
+            InnerNode newInnerNode = new InnerNode(metadata, bufferManager, newKeysList, newChildrenList, treeContext);
+
+            // 获取新inner node的页号
+            long newPageNum = newInnerNode.getPage().getPageNum();
+
+            // 生成向 parent 传递的元素
+            Optional<Pair<DataBox, Long>> put = Optional.of(new Pair<>(head,newPageNum));
+
+            // 清除原inner node中多的 child
+            subKeysList.clear();
+            subChildrenList.clear();
+            sync();
+            return put;
+        }
+        sync();
         return Optional.empty();
     }
 
@@ -203,6 +256,7 @@ class InnerNode extends BPlusNode {
         if(idx==keys.size()){
             getChild(idx).remove(key);
         }
+        sync();
         return;
     }
 
