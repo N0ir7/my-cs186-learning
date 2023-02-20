@@ -88,6 +88,18 @@ public class BNLJOperator extends JoinOperator {
          */
         private void fetchNextLeftBlock() {
             // TODO(proj3_part1): implement
+            // 如果左源数据已空，则不做任何操作
+            if(!this.leftSourceIterator.hasNext()){
+                return;
+            }
+            // 获取下一个block的数据
+            this.leftBlockIterator = QueryOperator.getBlockIterator(leftSourceIterator, getLeftSource().getSchema(), numBuffers - 2);
+
+            // 标记这个block中的第一个元素，以便之后回溯与右源数据进行比对
+            this.leftBlockIterator.markNext();
+
+            // 将指针指向第一个元素
+            this.leftRecord = leftBlockIterator.next();
         }
 
         /**
@@ -103,6 +115,17 @@ public class BNLJOperator extends JoinOperator {
          */
         private void fetchNextRightPage() {
             // TODO(proj3_part1): implement
+            // 如果右源数据已空，则不做任何操作
+            if(!this.rightSourceIterator.hasNext()){
+                return;
+            }
+            // 获取下一个page的数据
+            // (相当于获取一个page = 1 的 block)
+            this.rightPageIterator = QueryOperator.getBlockIterator(rightSourceIterator, getRightSource().getSchema(), 1);
+
+            // 标记这个page中的第一个元素，以便之后回溯与左源数据进行比对
+            this.rightPageIterator.markNext();
+
         }
 
         /**
@@ -115,7 +138,27 @@ public class BNLJOperator extends JoinOperator {
          */
         private Record fetchNextRecord() {
             // TODO(proj3_part1): implement
-            return null;
+            Record rightRecord;
+            while (true) {
+                if (rightPageIterator.hasNext()) {
+                } else if (leftBlockIterator.hasNext()) {
+                    leftRecord = leftBlockIterator.next();
+                    rightPageIterator.reset();
+                } else if (rightSourceIterator.hasNext()) {
+                    leftBlockIterator.reset();
+                    leftRecord = leftBlockIterator.next();
+                    fetchNextRightPage();
+                } else if (leftSourceIterator.hasNext()) {
+                    fetchNextLeftBlock();
+                    rightSourceIterator.reset();
+                    fetchNextRightPage();
+                } else {
+                    return null;
+                }
+                rightRecord = rightPageIterator.next();
+                if (compare(leftRecord, rightRecord) == 0)
+                    return leftRecord.concat(rightRecord);
+            }
         }
 
         /**
