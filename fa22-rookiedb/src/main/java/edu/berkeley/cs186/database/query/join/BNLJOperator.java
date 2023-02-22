@@ -142,17 +142,24 @@ public class BNLJOperator extends JoinOperator {
             while (true) {
                 if (rightPageIterator.hasNext()) {
                 } else if (leftBlockIterator.hasNext()) {
+                    // right page 全部读取过了
+                    // 则left block 中读取下一条记录
                     leftRecord = leftBlockIterator.next();
                     rightPageIterator.reset();
                 } else if (rightSourceIterator.hasNext()) {
+                    // left block全部读取过了
+                    // 则left block回滚，right page读取下一页
                     leftBlockIterator.reset();
                     leftRecord = leftBlockIterator.next();
                     fetchNextRightPage();
                 } else if (leftSourceIterator.hasNext()) {
+                    // right source 全部读取过了
+                    // 则right source回滚，left block 读取下一个block
                     fetchNextLeftBlock();
                     rightSourceIterator.reset();
                     fetchNextRightPage();
                 } else {
+                    // left source全部读取过了
                     return null;
                 }
                 rightRecord = rightPageIterator.next();

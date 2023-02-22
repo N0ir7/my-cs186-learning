@@ -87,7 +87,16 @@ public class SortOperator extends QueryOperator {
      */
     public Run sortRun(Iterator<Record> records) {
         // TODO(proj3_part1): implement
-        return null;
+        List<Record> recordList = new ArrayList<>();
+        // 将迭代器转化为List容器
+        while (records.hasNext()) {
+            recordList.add(records.next());
+        }
+        // 进行排序
+        recordList.sort(new RecordComparator());
+        // 生成新的Run
+        Run newRun = makeRun(recordList);
+        return newRun;
     }
 
     /**
@@ -108,7 +117,49 @@ public class SortOperator extends QueryOperator {
     public Run mergeSortedRuns(List<Run> runs) {
         assert (runs.size() <= this.numBuffers - 1);
         // TODO(proj3_part1): implement
-        return null;
+        PriorityQueue<Pair<Record, Integer>> queue = new PriorityQueue<>(new RecordPairComparator());
+        List<Iterator<Record>> runIteratorList = new ArrayList<>();
+
+        Run res = makeRun(); // 返回的新Run （Output Buffer）
+
+        // 获取所有run的迭代器
+        for (Run run : runs) {
+            runIteratorList.add(run.iterator());
+        }
+
+        int flag = runs.size(); // 剩余还有元素的run的个数
+
+        // 将所有run的第一个元素放入到优先队列中
+        for (int i = 0; i < runIteratorList.size(); i++) {
+            Iterator<Record> recordIterator = runIteratorList.get(i);
+            if (recordIterator.hasNext()) {
+                Record next = recordIterator.next();
+                queue.add(new Pair<>(next, i));
+            }else {
+                flag--;
+            }
+        }
+
+        // 当任一 一个run还有元素剩余时
+        while (flag>0) {
+            // 取出现在最小的元素
+            Pair<Record, Integer> poll = queue.poll();
+            Record minRecord = poll.getFirst();
+            Integer runNo = poll.getSecond();
+            // 如果存在下一个元素的话，向优先队列中补充来自相同run的元素
+            Iterator<Record> nextRun = runIteratorList.get(runNo);
+            if (nextRun.hasNext()) {
+                queue.add(new Pair<>(nextRun.next(), runNo));
+            }else {
+                // 如果不存在下一个元素的话，说明该迭代器已经空了
+                flag--;
+            }
+            // 将当前的最小元素写入结果run中
+            res.add(minRecord);
+        }
+
+
+        return res;
     }
 
     /**
@@ -133,7 +184,16 @@ public class SortOperator extends QueryOperator {
      */
     public List<Run> mergePass(List<Run> runs) {
         // TODO(proj3_part1): implement
-        return Collections.emptyList();
+        int thresh = numBuffers -1; // 每次merge的数量
+        int passNum = (runs.size()+thresh-1)/thresh; // 需要多少轮
+        List<Run> res = new ArrayList<>(); // 结果数组
+        for (int i = 0; i < passNum; i++) {
+            // 每次取 thresh个runs进行merge
+            List<Run> mergeRuns = runs.subList(thresh * i, Math.min(i * thresh + thresh,runs.size()));
+            res.add(mergeSortedRuns(mergeRuns));
+        }
+
+        return res;
     }
 
     /**
@@ -149,7 +209,17 @@ public class SortOperator extends QueryOperator {
         Iterator<Record> sourceIterator = getSource().iterator();
 
         // TODO(proj3_part1): implement
-        return makeRun(); // TODO(proj3_part1): replace this!
+        List<Run> list = new ArrayList<>(); // 结果列表
+        while (sourceIterator.hasNext()) {
+            // 每次读取numBuffers页的数据
+            BacktrackingIterator<Record> blockIterator = QueryOperator.getBlockIterator(sourceIterator, getSchema(), numBuffers);
+            Run records = sortRun(blockIterator);
+            list.add(records);
+        }
+        while (list.size()>1){
+            list = mergePass(list);
+        }
+        return list.get(0); // TODO(proj3_part1): replace this!
     }
 
     /**
