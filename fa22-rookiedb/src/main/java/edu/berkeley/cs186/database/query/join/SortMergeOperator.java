@@ -140,9 +140,83 @@ public class SortMergeOperator extends JoinOperator {
          */
         private Record fetchNextRecord() {
             // TODO(proj3_part1): implement
-            return null;
+            if(leftRecord == null){
+                return null;
+            }
+            while (true){
+                if(!marked){
+                    // 如果没有被标记
+                    while (getCpRes()<0){
+                        if(!advance(true)){
+                            return null;
+                        }
+                    }
+                    while (getCpRes()>0){
+                        if(!advance(false)){
+                            return null;
+                        }
+                    }
+                    // 当前的左记录与右记录有很大可能相等
+                    // 标记当前的右记录
+                    this.rightIterator.markPrev();
+                    marked=true;
+                }
+
+                // 如果被标记了
+                // 右记录游标一直向后移动直到找到一条不同的记录
+                if(getCpRes()==0){
+                    Record res = leftRecord.concat(rightRecord);
+                    if(!advance(false)){
+                        // 如果right source到头了
+                        reset();
+                    }
+                    return res;
+                }else {
+                    // 如果找到了不相等的记录
+                    reset();
+                    marked = false;
+                }
+
+            }
         }
 
+        /**
+         * 获取两个record的比较结果
+         * @return 左记录与右记录的比较结果
+         */
+        private int getCpRes(){
+            return compare(leftRecord,rightRecord);
+        }
+
+        /**
+         * 移动左游标或者右游标
+         * @param isLeft 是否移动左游标
+         * @return 是否移动成功
+         */
+        private boolean advance(boolean isLeft){
+            if(isLeft){
+                if(leftIterator.hasNext()){
+                    leftRecord = leftIterator.next();
+                    return true;
+                }
+                leftRecord = null;
+            }else {
+                if(rightIterator.hasNext()){
+                    rightRecord = rightIterator.next();
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /**
+         * 将右游标重置，左游标
+         */
+        private void reset(){
+            rightIterator.reset();
+            advance(false);
+            advance(true);
+        }
         @Override
         public void remove() {
             throw new UnsupportedOperationException();

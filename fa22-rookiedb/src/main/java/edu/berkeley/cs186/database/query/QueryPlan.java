@@ -577,6 +577,25 @@ public class QueryPlan {
         QueryOperator minOp = new SequentialScanOperator(this.transaction, table);
 
         // TODO(proj3_part2): implement
+        int scanCost = minOp.estimateIOCost(); // sequential scan 的 cost作为初始值
+        int indexScanIndex = -1; // 最小cost对应的SelectPredicate的下标
+        // 获取需要select且有索引的列
+        List<Integer> eligibleIndexColumns = getEligibleIndexColumns(table);
+        for (int i = 0; i < eligibleIndexColumns.size(); i++) {
+            Integer eligibleIndexColumn = eligibleIndexColumns.get(i);
+            SelectPredicate selectPredicate = this.selectPredicates.get(eligibleIndexColumn);
+            // 构建一个IndexScan，并获取其cost
+            IndexScanOperator indexScanOperator = new IndexScanOperator(this.transaction, table, selectPredicate.column, selectPredicate.operator, selectPredicate.value);
+            int indexScanCost = indexScanOperator.estimateIOCost();
+            if( indexScanCost< scanCost){
+                // 找到最小的cost的scan方式
+                scanCost = indexScanCost;
+                minOp = indexScanOperator;
+                indexScanIndex = i;
+            }
+        }
+        // 将所有的除被index scan的字段以外的select字段push down
+        minOp = addEligibleSelections(minOp,indexScanIndex);
         return minOp;
     }
 
